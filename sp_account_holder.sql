@@ -64,3 +64,6 @@ END sp_account_holder;
 
 SHOW ERRORS
 EXIT
+
+fucking line is added again
+to set remote
