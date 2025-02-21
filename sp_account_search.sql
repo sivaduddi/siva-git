@@ -22,19 +22,19 @@ exec registration.register ( -
 
 
 CREATE OR REPLACE PROCEDURE sp_account_search(
-    p_search_attribute  IN            VARCHAR2,
-    p_search_value      IN            VARCHAR2,
-    p_like              IN            VARCHAR2,
-    p_user_id           IN            usertype.USER_ID,
-    p_lang_code         IN            usertype.LANG_CODE,
+    p_search_attribute   IN            VARCHAR2,
+    p_search_value      	IN            VARCHAR2,
+    p_like              			IN            VARCHAR2,
+    p_user_id          		IN            usertype.USER_ID,
+    p_lang_code         	IN            usertype.LANG_CODE,
     p_account_data_sep     OUT NOCOPY VARCHAR2,
-    p_account_data         OUT        usertype.REF_CURSOR)
+    p_account_data         	OUT        usertype.REF_CURSOR)
 IS
-    v_search_value                 VARCHAR2(255);
-    v_search_attribute             VARCHAR2(255);
-    v_where                        VARCHAR2(1024);
-    v_header                       VARCHAR2(1024);
-    v_sql                          VARCHAR2(4000);
+    v_search_value                 	VARCHAR2(255);
+    v_search_attribute             	VARCHAR2(255);
+    v_where                        		VARCHAR2(1024);
+    v_header                       		VARCHAR2(1024);
+    v_sql                         			VARCHAR2(4000);
 BEGIN
     -- $Id$
 
