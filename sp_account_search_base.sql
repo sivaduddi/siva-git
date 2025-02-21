@@ -35,17 +35,17 @@ ON COMMIT DELETE ROWS
 SHOW ERRORS
 
 CREATE OR REPLACE PROCEDURE sp_account_search_base(
-    p_search_attribute             VARCHAR2,
-    p_search_value                 VARCHAR2,
-    p_like                         VARCHAR2)
+    p_search_attribute             	VARCHAR2,
+    p_search_value                 	VARCHAR2,
+    p_like                         			VARCHAR2)
 IS
-    v_sql                          VARCHAR2(4000);
-    v_where                        VARCHAR2(1024);
-    v_from                         VARCHAR2(1024);
-    v_search_value                 VARCHAR2( 100);
-    v_search_attribute             VARCHAR2( 255);
-    v_session_id                   VARCHAR2( 256);
-    v_user_id                      usertype.USER_ID;
+    v_sql                         			VARCHAR2(4000);
+    v_where                        		VARCHAR2(1024);
+    v_from                         		VARCHAR2(1024);
+    v_search_value                 	VARCHAR2( 100);
+    v_search_attribute             	VARCHAR2( 255);
+    v_session_id                   		VARCHAR2( 256);
+    v_user_id                      		usertype.USER_ID;
 
     /* Concat a 'from-clause' table list. v_from2 is appended to v_from1.
      * v_from2 must not be NULL, v_from1 may be NULL. The result is returned

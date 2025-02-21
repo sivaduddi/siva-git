@@ -21,10 +21,10 @@ exec registration.register ( -
 
 
 CREATE OR REPLACE FUNCTION sp_account_holder(
-    p_customer_no      IN ORDR.CUSTOMER_NO%TYPE,
-    p_constellation_id IN ORDR.CONSTELLATION_ID%TYPE,
-    p_account_no       IN ORDR.CUSTOMER_DEPOT_NO%TYPE,
-    p_account_type     IN ORDR.CUSTOMER_DEPOT_NO%TYPE 
+    p_customer_no      	 IN ORDR.CUSTOMER_NO%TYPE,
+    p_constellation_id	 IN ORDR.CONSTELLATION_ID%TYPE,
+    p_account_no      	 IN ORDR.CUSTOMER_DEPOT_NO%TYPE,
+    p_account_type     	 IN ORDR.CUSTOMER_DEPOT_NO%TYPE 
 )
 RETURN VARCHAR2 RESULT_CACHE DETERMINISTIC
 IS

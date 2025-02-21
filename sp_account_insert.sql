@@ -24,10 +24,10 @@ BEGIN
     /*
      * Provide default values.
      */
-    p_account.IS_ACTIVE        := NVL(p_account.IS_ACTIVE,        'Y');
-    p_account.ACCOUNT_DIVISION := NVL(p_account.ACCOUNT_DIVISION, '');
-    p_account.DELETE_FLAG      := NVL(p_account.DELETE_FLAG,      'N');
-    p_account.ATLAS_FLAG       := NVL(p_account.ATLAS_FLAG,       'N');
+    p_account.IS_ACTIVE        				:= NVL(p_account.IS_ACTIVE,        'Y');
+    p_account.ACCOUNT_DIVISION 		:= NVL(p_account.ACCOUNT_DIVISION, '');
+    p_account.DELETE_FLAG     			:= NVL(p_account.DELETE_FLAG,      'N');
+    p_account.ATLAS_FLAG      				:= NVL(p_account.ATLAS_FLAG,       'N');
 
     INSERT INTO ACCOUNTS VALUES p_account;
 

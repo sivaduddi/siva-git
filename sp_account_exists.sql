@@ -25,9 +25,9 @@ exec registration.register ( -
     '$Id$');
 
 CREATE OR REPLACE FUNCTION sp_account_exists
-    (p_account_no         IN       usertype.ACCOUNT_NO,
+    (p_account_no         IN        usertype.ACCOUNT_NO,
      p_account_type       IN       usertype.ACCOUNT_TYPE,
-     p_check_active       IN       usertype.YESNO := 'N')
+     p_check_active       IN        usertype.YESNO := 'N')
 RETURN BOOLEAN
 IS
     v_exists    NUMBER;
