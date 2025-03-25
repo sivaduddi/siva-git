@@ -35,6 +35,7 @@ IS
     v_where                        		VARCHAR2(1024);
     v_header                       		VARCHAR2(1024);
     v_sql                         			VARCHAR2(4000);
+    var_siva               		VARCHAR2(255);
 BEGIN
     -- $Id$
 
