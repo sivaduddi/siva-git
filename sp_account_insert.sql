@@ -15,7 +15,8 @@ exec registration.register ( -
     '$Id$');
 
 CREATE OR REPLACE PROCEDURE sp_account_insert
-    (p_account            IN OUT  ACCOUNTS%ROWTYPE)
+    (p_account            IN OUT  ACCOUNTS%ROWTYPE
+     p_name               IN      VARCHAR2 DEFAULT NULL)
 IS
 BEGIN
    -- $Id$
