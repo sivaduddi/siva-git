@@ -1,8 +1,3 @@
-/* available online in file 'sample6' */
-#include <stdio.h>
-#include <string.h>
-
-typedef char asciz;
 
 EXEC SQL BEGIN DECLARE SECTION;
    /* Define type for null-terminated strings. */
