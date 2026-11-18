@@ -1,0 +1,126 @@
+CREATE OR REPLACE PACKAGE BODY pkg_order_analytics AS
+
+    -- Private Helper Function (Not visible outside the package)
+    FUNCTION is_valid_range (
+        p_start IN DATE,
+        p_end   IN DATE
+    ) RETURN BOOLEAN IS
+    BEGIN
+        RETURN (p_start IS NOT NULL AND p_end IS NOT NULL AND p_start <= p_end);
+    END is_valid_range;
+
+    -- 1. Pipelined Function with CTEs & Window Functions
+    FUNCTION get_top_customers (
+        p_start_date IN DATE,
+        p_end_date   IN DATE,
+        p_top_n      IN NUMBER DEFAULT 10
+    ) RETURN t_customer_summary_tab PIPELINED IS
+        CURSOR c_ranked_customers IS
+            WITH order_totals AS (
+                SELECT 
+                    o.customer_id,
+                    COUNT(o.order_id) AS order_cnt,
+                    SUM(oi.quantity * oi.unit_price) AS total_amt
+                FROM orders o
+                JOIN order_items oi ON o.order_id = oi.order_id
+                WHERE o.order_date BETWEEN p_start_date AND p_end_date
+                  AND o.status = 'COMPLETED'
+                GROUP BY o.customer_id
+            ),
+            ranked_customers AS (
+                SELECT 
+                    c.customer_id,
+                    c.first_name || ' ' || c.last_name AS full_name,
+                    ot.order_cnt,
+                    ot.total_amt,
+                    DENSE_RANK() OVER (ORDER BY ot.total_amt DESC) AS rnk
+                FROM customers c
+                JOIN order_totals ot ON c.customer_id = ot.customer_id
+            )
+            SELECT customer_id, full_name, order_cnt, total_amt, rnk
+            FROM ranked_customers
+            WHERE rnk <= p_top_n;
+    BEGIN
+        IF NOT is_valid_range(p_start_date, p_end_date) THEN
+            RAISE_APPLICATION_ERROR(-20001, 'Start date must be earlier than or equal to end date.');
+        END IF;
+
+        FOR rec IN c_ranked_customers LOOP
+            PIPE ROW (t_customer_summary_rec(
+                rec.customer_id,
+                rec.full_name,
+                rec.order_cnt,
+                rec.total_amt,
+                rec.rnk
+            ));
+        END LOOP;
+
+        RETURN;
+    END get_top_customers;
+
+    -- 2. Procedure returning a multi-join analytical REF CURSOR
+    PROCEDURE get_sales_report_cursor (
+        p_region_id  IN  NUMBER,
+        p_min_amount IN  NUMBER,
+        p_cursor     OUT t_ref_cursor
+    ) IS
+    BEGIN
+        OPEN p_cursor FOR
+            SELECT 
+                r.region_name,
+                d.department_name,
+                e.employee_id,
+                e.last_name AS sales_rep,
+                COUNT(DISTINCT o.order_id) AS total_deals,
+                SUM(o.total_amount) AS revenue,
+                ROUND(AVG(o.total_amount), 2) AS avg_deal_size,
+                RANK() OVER (PARTITION BY r.region_id ORDER BY SUM(o.total_amount) DESC) AS region_rank
+            FROM regions r
+            JOIN departments d ON r.region_id = d.region_id
+            JOIN employees e   ON d.department_id = e.department_id
+            LEFT JOIN orders o ON e.employee_id = o.sales_rep_id
+            WHERE (p_region_id IS NULL OR r.region_id = p_region_id)
+            GROUP BY r.region_id, r.region_name, d.department_name, e.employee_id, e.last_name
+            HAVING NVL(SUM(o.total_amount), 0) >= NVL(p_min_amount, 0)
+            ORDER BY r.region_name, region_rank;
+    END get_sales_report_cursor;
+
+    -- 3. High-Performance Bulk Processing Procedure
+    PROCEDURE refresh_vip_statuses (
+        p_updated_count OUT NUMBER
+    ) IS
+        TYPE t_id_tab IS TABLE OF customers.customer_id%TYPE;
+        l_vip_ids t_id_tab;
+    BEGIN
+        p_updated_count := 0;
+
+        -- Fetch qualifying customer IDs into memory
+        SELECT customer_id
+        BULK COLLECT INTO l_vip_ids
+        FROM orders
+        WHERE status = 'COMPLETED'
+          AND order_date >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+        GROUP BY customer_id
+        HAVING SUM(total_amount) >= c_vip_threshold;
+
+        -- Perform bulk DML update if records exist
+        IF l_vip_ids.COUNT > 0 THEN
+            FORALL i IN 1 .. l_vip_ids.COUNT
+                UPDATE customers
+                SET customer_tier = 'VIP',
+                    last_updated  = SYSDATE
+                WHERE customer_id = l_vip_ids(i)
+                  AND NVL(customer_tier, 'STANDARD') <> 'VIP';
+
+            p_updated_count := SQL%ROWCOUNT;
+        END IF;
+
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            RAISE;
+    END refresh_vip_statuses;
+
+END pkg_order_analytics;
+/

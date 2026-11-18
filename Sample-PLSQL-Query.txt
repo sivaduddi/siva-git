@@ -1,0 +1,101 @@
+CREATE OR REPLACE PROCEDURE process_department_bonuses (
+    p_fiscal_year IN NUMBER,
+    p_min_sales   IN NUMBER DEFAULT 50000
+) IS
+    -- Define a record and collection type for bulk processing
+    TYPE t_bonus_rec IS RECORD (
+        emp_id        employees.employee_id%TYPE,
+        dept_name     departments.department_name%TYPE,
+        total_sales   NUMBER,
+        sales_rank    NUMBER,
+        bonus_amount  NUMBER
+    );
+    TYPE t_bonus_tab IS TABLE OF t_bonus_rec;
+    v_bonus_list t_bonus_tab;
+
+    -- Custom exception for business rule validation
+    e_invalid_year EXCEPTION;
+    v_updated_rows NUMBER := 0;
+
+    -- Explicit cursor with CTEs, Joins, Aggregations, and Window Functions
+    CURSOR c_emp_performance IS
+        WITH dept_sales AS (
+            SELECT 
+                e.employee_id,
+                e.department_id,
+                d.department_name,
+                SUM(o.order_total) AS total_sales
+            FROM employees e
+            JOIN departments d ON e.department_id = d.department_id
+            JOIN orders o ON e.employee_id = o.sales_rep_id
+            WHERE EXTRACT(YEAR FROM o.order_date) = p_fiscal_year
+              AND o.order_status = 'COMPLETED'
+            GROUP BY e.employee_id, e.department_id, d.department_name
+            HAVING SUM(o.order_total) >= p_min_sales
+        ),
+        ranked_sales AS (
+            SELECT 
+                employee_id,
+                department_name,
+                total_sales,
+                DENSE_RANK() OVER (
+                    PARTITION BY department_id 
+                    ORDER BY total_sales DESC
+                ) AS sales_rank
+            FROM dept_sales
+        )
+        SELECT 
+            employee_id,
+            department_name,
+            total_sales,
+            sales_rank,
+            CASE 
+                WHEN sales_rank = 1 THEN total_sales * 0.10
+                WHEN sales_rank = 2 THEN total_sales * 0.05
+                ELSE total_sales * 0.02
+            END AS bonus_amount
+        FROM ranked_sales;
+
+BEGIN
+    -- Validate input parameter
+    IF p_fiscal_year < 2000 OR p_fiscal_year > EXTRACT(YEAR FROM SYSDATE) THEN
+        RAISE e_invalid_year;
+    END IF;
+
+    -- Open cursor and bulk-collect rows into memory for performance
+    OPEN c_emp_performance;
+    FETCH c_emp_performance BULK COLLECT INTO v_bonus_list;
+    CLOSE c_emp_performance;
+
+    -- Process updates in bulk using FORALL
+    IF v_bonus_list.COUNT > 0 THEN
+        FORALL i IN 1 .. v_bonus_list.COUNT
+            UPDATE employees
+            SET bonus = NVL(bonus, 0) + v_bonus_list(i).bonus_amount,
+                last_updated = SYSDATE
+            WHERE employee_id = v_bonus_list(i).emp_id;
+
+        v_updated_rows := SQL%ROWCOUNT;
+
+        -- Log the batch execution
+        INSERT INTO bonus_audit_log (fiscal_year, records_processed, run_date)
+        VALUES (p_fiscal_year, v_updated_rows, SYSDATE);
+
+        COMMIT;
+        DBMS_OUTPUT.PUT_LINE('Successfully updated ' || v_updated_rows || ' employee records.');
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('No eligible employees found for fiscal year ' || p_fiscal_year);
+    END IF;
+
+EXCEPTION
+    WHEN e_invalid_year THEN
+        DBMS_OUTPUT.PUT_LINE('Error: Invalid fiscal year provided.');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        IF c_emp_performance%ISOPEN THEN
+            CLOSE c_emp_performance;
+        END IF;
+        DBMS_OUTPUT.PUT_LINE('Unexpected error: ' || SQLERRM);
+        RAISE;
+END process_department_bonuses;
+/

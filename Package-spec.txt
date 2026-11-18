@@ -1,0 +1,39 @@
+CREATE OR REPLACE PACKAGE pkg_order_analytics AS
+    -- Custom Public Types
+    TYPE t_customer_summary_rec IS RECORD (
+        customer_id     NUMBER,
+        customer_name   VARCHAR2(100),
+        total_orders    NUMBER,
+        total_spent     NUMBER(12, 2),
+        customer_rank   NUMBER
+    );
+
+    TYPE t_customer_summary_tab IS TABLE OF t_customer_summary_rec;
+    TYPE t_ref_cursor IS REF CURSOR;
+
+    -- Public Constants & Custom Exceptions
+    c_vip_threshold CONSTANT NUMBER := 10000;
+    e_invalid_date_range EXCEPTION;
+    PRAGMA EXCEPTION_INIT(e_invalid_date_range, -20001);
+
+    -- Public Function: Returns ranked customer spending via complex SQL
+    FUNCTION get_top_customers (
+        p_start_date IN DATE,
+        p_end_date   IN DATE,
+        p_top_n      IN NUMBER DEFAULT 10
+    ) RETURN t_customer_summary_tab PIPELINED;
+
+    -- Public Procedure: Returns a dynamic REF CURSOR for reporting
+    PROCEDURE get_sales_report_cursor (
+        p_region_id  IN  NUMBER,
+        p_min_amount IN  NUMBER,
+        p_cursor     OUT t_ref_cursor
+    );
+
+    -- Public Procedure: Batch processes VIP status upgrades using BULK COLLECT & FORALL
+    PROCEDURE refresh_vip_statuses (
+        p_updated_count OUT NUMBER
+    );
+
+END pkg_order_analytics;
+/
