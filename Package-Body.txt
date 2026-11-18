@@ -124,3 +124,6 @@ CREATE OR REPLACE PACKAGE BODY pkg_order_analytics AS
 
 END pkg_order_analytics;
 /
+
+
+fetch test
