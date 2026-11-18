@@ -1,0 +1,97 @@
+CREATE OR REPLACE PROCEDURE process_department_bonuses (
+    p_dept_id          IN  employees.department_id%TYPE,
+    p_min_tenure_years IN  NUMBER DEFAULT 1,
+    p_total_processed  OUT NUMBER,
+    p_status_message   OUT VARCHAR2
+) IS
+    -- Custom business rule exception
+    e_budget_exceeded EXCEPTION;
+    PRAGMA EXCEPTION_INIT(e_budget_exceeded, -20001);
+
+    -- Constants and control variables
+    c_max_dept_budget CONSTANT NUMBER := 50000;
+    v_total_bonus     NUMBER := 0;
+
+    -- Explicit cursor with a CTE and window function
+    CURSOR c_eligible_emps IS
+        WITH dept_metrics AS (
+            SELECT 
+                e.employee_id,
+                e.salary,
+                MONTHS_BETWEEN(SYSDATE, e.hire_date) / 12 AS tenure_years,
+                RANK() OVER (ORDER BY e.salary DESC) AS salary_rank,
+                AVG(e.salary) OVER () AS avg_dept_salary
+            FROM employees e
+            WHERE e.department_id = p_dept_id
+              AND e.status = 'ACTIVE'
+        )
+        SELECT 
+            employee_id,
+            salary,
+            tenure_years,
+            CASE 
+                WHEN salary < avg_dept_salary AND tenure_years >= 5 THEN salary * 0.15
+                WHEN tenure_years >= p_min_tenure_years THEN salary * 0.10
+                ELSE 0
+            END AS calculated_bonus
+        FROM dept_metrics
+        WHERE tenure_years >= p_min_tenure_years
+        FOR UPDATE OF salary NOWAIT;
+
+    -- Collection type for BULK COLLECT and FORALL
+    TYPE t_emp_bonus_tab IS TABLE OF c_eligible_emps%ROWTYPE;
+    v_emp_list t_emp_bonus_tab;
+
+BEGIN
+    p_total_processed := 0;
+
+    -- Fetch eligible records into memory in one context switch
+    OPEN c_eligible_emps;
+    FETCH c_eligible_emps BULK COLLECT INTO v_emp_list;
+    CLOSE c_eligible_emps;
+
+    -- Exit early if no records match
+    IF v_emp_list.COUNT = 0 THEN
+        p_status_message := 'No eligible employees found for department ' || p_dept_id;
+        RETURN;
+    END IF;
+
+    -- Validate total bonus payout against department budget
+    FOR i IN 1 .. v_emp_list.COUNT LOOP
+        v_total_bonus := v_total_bonus + v_emp_list(i).calculated_bonus;
+    END LOOP;
+
+    IF v_total_bonus > c_max_dept_budget THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Total bonus (' || v_total_bonus || ') exceeds budget.');
+    END IF;
+
+    -- Perform bulk DML updates
+    FORALL i IN 1 .. v_emp_list.COUNT
+        UPDATE employees
+        SET salary = salary + v_emp_list(i).calculated_bonus,
+            last_updated = SYSDATE
+        WHERE employee_id = v_emp_list(i).employee_id;
+
+    -- Insert audit records in bulk
+    FORALL i IN 1 .. v_emp_list.COUNT
+        INSERT INTO bonus_audit_log (audit_id, employee_id, bonus_amount, processed_date)
+        VALUES (bonus_audit_seq.NEXTVAL, v_emp_list(i).employee_id, v_emp_list(i).calculated_bonus, SYSDATE);
+
+    p_total_processed := v_emp_list.COUNT;
+    p_status_message := 'Success: Processed ' || p_total_processed || ' bonuses totaling ' || v_total_bonus;
+
+    COMMIT;
+
+EXCEPTION
+    WHEN e_budget_exceeded THEN
+        ROLLBACK;
+        p_status_message := 'Aborted: ' || SQLERRM;
+    WHEN OTHERS THEN
+        IF c_eligible_emps%ISOPEN THEN
+            CLOSE c_eligible_emps;
+        END IF;
+        ROLLBACK;
+        p_status_message := 'Unexpected Error: ' || SQLERRM;
+        RAISE;
+END process_department_bonuses;
+/

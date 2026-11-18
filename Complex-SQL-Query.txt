@@ -1,0 +1,72 @@
+WITH RegionalCustomerSales AS (
+    -- Step 1: Aggregate order data per customer and region
+    SELECT 
+        c.region,
+        c.customer_id,
+        c.customer_name,
+        COUNT(o.order_id) AS total_orders,
+        SUM(o.total_amount) AS total_spent,
+        -- Conditional aggregation to count high-value orders
+        SUM(CASE WHEN o.total_amount >= 500 THEN 1 ELSE 0 END) AS large_orders_count,
+        MAX(o.order_date) AS latest_order_date
+    FROM customers c
+    INNER JOIN orders o 
+        ON c.customer_id = o.customer_id
+    WHERE o.status = 'Completed'
+      AND o.order_date >= '2026-01-01'
+    GROUP BY c.region, c.customer_id, c.customer_name
+),
+RankedCustomers AS (
+    -- Step 2: Apply Window Functions for ranking and regional totals
+    SELECT 
+        region,
+        customer_id,
+        customer_name,
+        total_orders,
+        total_spent,
+        large_orders_count,
+        latest_order_date,
+        -- Rank customers within each region by spending
+        DENSE_RANK() OVER (
+            PARTITION BY region 
+            ORDER BY total_spent DESC
+        ) AS regional_rank,
+        -- Calculate total revenue across the entire region
+        SUM(total_spent) OVER (
+            PARTITION BY region
+        ) AS regional_total_revenue
+    FROM RegionalCustomerSales
+),
+LatestOrderComparison AS (
+    -- Step 3: Compare each customer's most recent order to their prior order
+    SELECT 
+        customer_id,
+        total_amount AS last_order_amount,
+        LAG(total_amount) OVER (
+            PARTITION BY customer_id 
+            ORDER BY order_date ASC
+        ) AS previous_order_amount,
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id 
+            ORDER BY order_date DESC
+        ) AS order_recency_rank
+    FROM orders
+    WHERE status = 'Completed'
+)
+-- Step 4: Combine CTEs and filter for the top 3 per region
+SELECT 
+    rc.region,
+    rc.regional_rank,
+    rc.customer_name,
+    rc.total_orders,
+    rc.large_orders_count,
+    rc.total_spent,
+    ROUND((rc.total_spent / rc.regional_total_revenue) * 100, 2) AS pct_of_region_revenue,
+    loc.last_order_amount,
+    COALESCE(loc.last_order_amount - loc.previous_order_amount, 0) AS diff_from_prev_order
+FROM RankedCustomers rc
+LEFT JOIN LatestOrderComparison loc 
+    ON rc.customer_id = loc.customer_id 
+    AND loc.order_recency_rank = 1
+WHERE rc.regional_rank <= 3
+ORDER BY rc.region ASC, rc.regional_rank ASC;
